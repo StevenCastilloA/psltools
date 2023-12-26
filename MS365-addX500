@@ -1,0 +1,62 @@
+
+Connect-ExchangeOnline
+
+$idTenant = 'ade8db2d-f43c-42ae-a4ea-ed48f79b84a4'
+$urlToken = 'https://login.microsoftonline.com/' + $idTenant + '/oauth2/token'
+
+$Form = @{
+    grant_type  = 'client_credentials'
+    client_id   = '0801bc73-af7c-4585-b1b7-1ade45520e5b'
+    client_secret      = 'RzA8Q~61O2QdolketYXH0RVRLwfq.zwAKI4dJcyD'
+    resource     = 'https://graph.microsoft.com'
+}
+
+$resultToken = Invoke-WebRequest -Uri $urlToken -Method POST -Body $Form
+
+$tokenObject = $resultToken.Content | ConvertFrom-Json
+
+
+$idsUPN = @{}
+
+$users=Import-Excel -Path 'C:\Users\scastillo\Downloads\usSearchExchangeID.xlsx' -WorksheetName 'Hoja1'
+foreach ($userObj in $users)
+{
+    $user = $userObj.user
+
+    echo "Search ... $user"
+
+    $urlSearchUser = 'https://graph.microsoft.com/v1.0/users/' + $user + '/calendar/events?$select=organizer,start&$top=500&$filter=isOrganizer eq true & start/dateTime le ' +"'2023-11-15T00:00:00.0000000'"
+
+    $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+    $headers.Add('Accept','Application/Json')
+    $headers.Add('Authorization','Bearer '+$tokenObject.access_token)
+
+
+
+    $body = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+
+    $responseEndPoint = Invoke-WebRequest -Uri $urlSearchUser -Method GET -Body $body -Headers $headers
+
+    $eventsUser = ($responseEndPoint.Content  | ConvertFrom-Json).Value
+
+
+    foreach ($eventUser in $eventsUser)
+    {
+      $objOrg = $eventUser.organizer
+      if ($objOrg.emailAddress.address -match "ExchangeLabs")
+      {
+        $idsUPN[$user] = $objOrg.emailAddress.address
+        
+        $x500 = 'X500:' + $objOrg.emailAddress.address 
+        $x0500 = 'X.500:' + $objOrg.emailAddress.address 
+
+        Set-Mailbox -Identity $user -EmailAddresses @{Add = $x500}
+        Set-Mailbox -Identity $user -EmailAddresses @{Add = $x0500}
+        break
+      }
+      #$eventUser.subject
+    }
+
+    
+}
+$idsUPN
